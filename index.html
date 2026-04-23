@@ -1,0 +1,1613 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Золотые Шашки | Viora Studio</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --gold: #C9A84C;
+    --gold-light: #F0C040;
+    --gold-dark: #8B6914;
+    --bg: #050505;
+    --glass: rgba(10,8,4,0.75);
+    --glass-border: rgba(201,168,76,0.35);
+    --text-gold: #D4A843;
+  }
+  body {
+    background: #000;
+    color: var(--text-gold);
+    font-family: 'Segoe UI', Arial, sans-serif;
+    overflow: hidden;
+    height: 100vh; width: 100vw;
+  }
+  #canvas-container {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 1;
+  }
+  canvas { display: block; }
+
+  /* ---- UI OVERLAY ---- */
+  #ui {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  /* TOP BAR */
+  #topbar {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 18px;
+    background: rgba(5,5,5,0.82);
+    border-bottom: 1px solid var(--glass-border);
+    backdrop-filter: blur(12px);
+    pointer-events: all;
+    z-index: 20;
+  }
+  #topbar .logo {
+    font-size: 1.15rem; font-weight: 700;
+    letter-spacing: 2px; color: var(--gold-light);
+    text-transform: uppercase;
+  }
+  #topbar .logo span { color: var(--gold-dark); }
+  .score-box {
+    display: flex; gap: 18px; align-items: center;
+  }
+  .score-item {
+    text-align: center; font-size: 0.72rem;
+    text-transform: uppercase; letter-spacing: 1px;
+  }
+  .score-item .num {
+    display: block; font-size: 1.3rem;
+    font-weight: 700; color: var(--gold-light);
+  }
+  .diff-btns {
+    display: flex; gap: 6px;
+  }
+  .diff-btn {
+    padding: 5px 13px; border-radius: 6px;
+    border: 1px solid var(--glass-border);
+    background: var(--glass);
+    color: var(--text-gold);
+    font-size: 0.72rem; letter-spacing: 1px;
+    cursor: pointer; transition: all 0.2s;
+    backdrop-filter: blur(8px);
+  }
+  .diff-btn.active {
+    background: var(--gold-light);
+    color: #000; border-color: var(--gold-light);
+    font-weight: 700;
+  }
+  .diff-btn:hover:not(.active) { background: rgba(201,168,76,0.18); }
+  #btn-undo, #btn-new {
+    padding: 5px 13px; border-radius: 6px;
+    border: 1px solid var(--glass-border);
+    background: var(--glass);
+    color: var(--text-gold);
+    font-size: 0.72rem; letter-spacing: 1px;
+    cursor: pointer; transition: all 0.2s;
+    backdrop-filter: blur(8px);
+  }
+  #btn-undo:hover, #btn-new:hover { background: rgba(201,168,76,0.18); }
+
+  /* STATUS BAR */
+  #status-bar {
+    position: fixed; bottom: 50px; left: 50%;
+    transform: translateX(-50%);
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: 30px;
+    padding: 7px 24px;
+    font-size: 0.85rem; letter-spacing: 1px;
+    backdrop-filter: blur(10px);
+    color: var(--gold-light);
+    pointer-events: none;
+    z-index: 20;
+    text-align: center;
+    max-width: 90vw;
+  }
+
+  /* CHAT PANEL */
+  #chat-panel {
+    position: fixed; right: 14px; top: 60px;
+    width: 270px;
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    backdrop-filter: blur(14px);
+    display: flex; flex-direction: column;
+    max-height: calc(100vh - 130px);
+    pointer-events: all;
+    z-index: 20;
+    transition: all 0.3s;
+  }
+  #chat-header {
+    padding: 9px 14px; font-size: 0.75rem;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    border-bottom: 1px solid var(--glass-border);
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer; color: var(--gold-light);
+  }
+  #chat-toggle-btn {
+    background: none; border: none;
+    color: var(--gold-light); cursor: pointer;
+    font-size: 1rem;
+  }
+  #chat-messages {
+    flex: 1; overflow-y: auto;
+    padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 7px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--gold-dark) transparent;
+  }
+  #chat-messages::-webkit-scrollbar { width: 4px; }
+  #chat-messages::-webkit-scrollbar-thumb { background: var(--gold-dark); border-radius: 2px; }
+  .chat-msg {
+    font-size: 0.78rem; line-height: 1.4;
+    padding: 7px 10px; border-radius: 8px;
+    max-width: 95%;
+  }
+  .chat-msg.ai {
+    background: rgba(201,168,76,0.10);
+    border: 1px solid rgba(201,168,76,0.22);
+    color: #e0c070; align-self: flex-start;
+  }
+  .chat-msg.sys {
+    background: rgba(201,168,76,0.05);
+    color: rgba(201,168,76,0.55);
+    font-style: italic; align-self: center;
+    font-size: 0.71rem;
+  }
+  #analysis-box {
+    padding: 8px 12px;
+    border-top: 1px solid var(--glass-border);
+    font-size: 0.71rem; color: rgba(201,168,76,0.7);
+    letter-spacing: 0.5px;
+  }
+  #analysis-label {
+    font-size: 0.65rem; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--gold-dark);
+    margin-bottom: 3px;
+  }
+
+  /* VIORA STUDIO BRANDING */
+  #viora-btn {
+    position: fixed; left: 14px; bottom: 14px;
+    padding: 7px 14px;
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    color: var(--gold-light);
+    font-size: 0.68rem; letter-spacing: 2px;
+    text-transform: uppercase;
+    text-decoration: none;
+    backdrop-filter: blur(10px);
+    pointer-events: all;
+    z-index: 30;
+    transition: all 0.2s;
+  }
+  #viora-btn:hover { background: rgba(201,168,76,0.18); border-color: var(--gold-light); }
+
+  /* MODAL */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.88);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+    backdrop-filter: blur(6px);
+  }
+  .modal-box {
+    background: linear-gradient(135deg, #0a0800, #111005);
+    border: 1px solid var(--glass-border);
+    border-radius: 18px;
+    padding: 36px 32px;
+    max-width: 380px; width: 90%;
+    text-align: center;
+    box-shadow: 0 0 60px rgba(201,168,76,0.12);
+  }
+  .modal-box h2 {
+    font-size: 1.5rem; color: var(--gold-light);
+    letter-spacing: 3px; margin-bottom: 10px;
+  }
+  .modal-box p {
+    font-size: 0.85rem; color: rgba(201,168,76,0.7);
+    line-height: 1.6; margin-bottom: 22px;
+  }
+  .modal-btns { display: flex; gap: 12px; justify-content: center; }
+  .modal-btn {
+    padding: 10px 28px; border-radius: 8px;
+    font-size: 0.85rem; cursor: pointer;
+    font-weight: 600; letter-spacing: 1px;
+    border: 1px solid var(--gold-light);
+    transition: all 0.2s;
+  }
+  .modal-btn.primary {
+    background: var(--gold-light); color: #000;
+  }
+  .modal-btn.secondary {
+    background: transparent; color: var(--gold-light);
+  }
+  .modal-btn:hover { transform: scale(1.04); box-shadow: 0 0 16px rgba(240,192,64,0.3); }
+
+  /* TUTORIAL HIGHLIGHT */
+  .tutorial-tip {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: 100px; z-index: 50;
+    background: var(--glass);
+    border: 1px solid var(--gold-light);
+    border-radius: 12px;
+    padding: 12px 22px;
+    font-size: 0.82rem; color: var(--gold-light);
+    letter-spacing: 0.5px; text-align: center;
+    pointer-events: none;
+    backdrop-filter: blur(10px);
+    max-width: 85vw;
+  }
+
+  /* WINNER OVERLAY */
+  #winner-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 90;
+    align-items: center; justify-content: center;
+    backdrop-filter: blur(8px);
+  }
+  #winner-overlay.show { display: flex; }
+  .winner-box {
+    text-align: center;
+    background: linear-gradient(135deg,#0c0900,#151000);
+    border: 1px solid var(--gold-light);
+    border-radius: 22px;
+    padding: 44px 48px;
+    box-shadow: 0 0 80px rgba(240,192,64,0.25);
+  }
+  .winner-box h1 {
+    font-size: 2.1rem; color: var(--gold-light);
+    letter-spacing: 4px; text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .winner-box p { color: rgba(201,168,76,0.7); font-size: 0.9rem; margin-bottom: 24px; }
+
+  /* MOBILE */
+  @media (max-width: 600px) {
+    #chat-panel { width: calc(100vw - 28px); right: 14px; top: 56px; max-height: 220px; }
+    #chat-panel.collapsed { max-height: 42px; overflow: hidden; }
+    .diff-btns { gap: 4px; }
+    .diff-btn { padding: 4px 8px; font-size: 0.65rem; }
+    #btn-undo, #btn-new { padding: 4px 8px; font-size: 0.65rem; }
+    .score-box { gap: 10px; }
+  }
+
+  /* Loading */
+  #loading {
+    position: fixed; inset: 0; background: #000;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 18px; z-index: 200;
+  }
+  #loading h2 { font-size: 1.6rem; letter-spacing: 4px; color: var(--gold-light); }
+  .loading-bar-wrap {
+    width: 200px; height: 3px; background: rgba(201,168,76,0.2); border-radius: 2px;
+  }
+  .loading-bar {
+    height: 100%; width: 0; background: var(--gold-light);
+    border-radius: 2px; transition: width 0.4s;
+  }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <h2>ЗОЛОТЫЕ ШАШКИ</h2>
+  <div class="loading-bar-wrap"><div class="loading-bar" id="lbar"></div></div>
+  <div style="font-size:0.75rem;color:rgba(201,168,76,0.5);letter-spacing:2px;">ЗАГРУЗКА...</div>
+</div>
+
+<div id="canvas-container"></div>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <div class="logo">Золотые <span>Шашки</span></div>
+  <div class="score-box">
+    <div class="score-item"><span class="num" id="score-player">0</span>побед</div>
+    <div class="score-item"><span class="num" id="score-ai">0</span>ИИ</div>
+  </div>
+  <div class="diff-btns">
+    <button class="diff-btn active" id="d-easy" onclick="setDifficulty('easy')">Легко</button>
+    <button class="diff-btn" id="d-std" onclick="setDifficulty('standard')">Стандарт</button>
+    <button class="diff-btn" id="d-hard" onclick="setDifficulty('hard')">Сложно</button>
+  </div>
+  <div style="display:flex;gap:8px">
+    <button id="btn-undo" onclick="undoMove()">↩ Назад</button>
+    <button id="btn-new" onclick="newGame()">⟳ Новая</button>
+  </div>
+</div>
+
+<!-- CHAT PANEL -->
+<div id="chat-panel">
+  <div id="chat-header" onclick="toggleChat()">
+    <span>🤖 Мистраль ИИ</span>
+    <button id="chat-toggle-btn">▲</button>
+  </div>
+  <div id="chat-messages"></div>
+  <div id="analysis-box">
+    <div id="analysis-label">Оценка позиции</div>
+    <div id="analysis-text">Игра только началась...</div>
+  </div>
+</div>
+
+<!-- STATUS -->
+<div id="status-bar">Ваш ход</div>
+
+<!-- WINNER OVERLAY -->
+<div id="winner-overlay">
+  <div class="winner-box">
+    <h1 id="winner-title">Победа!</h1>
+    <p id="winner-sub">Поздравляем!</p>
+    <button class="modal-btn primary" onclick="newGame()">Новая игра</button>
+  </div>
+</div>
+
+<!-- VIORA BRANDING -->
+<a id="viora-btn" href="https://t.me/VioraStudio" target="_blank">viora studio</a>
+
+<!-- MODALS filled by JS -->
+<div id="modal-container"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// =========================================================
+// THREE.JS ORBIT CONTROLS (inline)
+// =========================================================
+(function(){
+const _q1=new THREE.Quaternion(),_q2=new THREE.Quaternion();
+THREE.OrbitControls=function(object,domElement){
+this.object=object;this.domElement=domElement||document;
+this.enabled=true;this.target=new THREE.Vector3();
+this.minDistance=0;this.maxDistance=Infinity;
+this.minZoom=0;this.maxZoom=Infinity;
+this.minPolarAngle=0;this.maxPolarAngle=Math.PI;
+this.minAzimuthAngle=-Infinity;this.maxAzimuthAngle=Infinity;
+this.enableDamping=false;this.dampingFactor=0.05;
+this.enableZoom=true;this.zoomSpeed=1.0;
+this.enableRotate=true;this.rotateSpeed=1.0;
+this.enablePan=true;this.panSpeed=1.0;
+this.screenSpacePanning=true;this.keyPanSpeed=7.0;
+this.autoRotate=false;this.autoRotateSpeed=2.0;
+this.enableKeys=false;
+var scope=this;
+var STATE={NONE:-1,ROTATE:0,DOLLY:1,PAN:2,TOUCH_ROTATE:3,TOUCH_PAN:4,TOUCH_DOLLY_PAN:5,TOUCH_DOLLY_ROTATE:6};
+var state=STATE.NONE;
+var EPS=0.000001;
+var spherical=new THREE.Spherical();var sphericalDelta=new THREE.Spherical();
+var scale=1;var panOffset=new THREE.Vector3();
+var zoomChanged=false;
+var rotateStart=new THREE.Vector2();var rotateEnd=new THREE.Vector2();var rotateDelta=new THREE.Vector2();
+var panStart=new THREE.Vector2();var panEnd=new THREE.Vector2();var panDelta=new THREE.Vector2();
+var dollyStart=new THREE.Vector2();var dollyEnd=new THREE.Vector2();var dollyDelta=new THREE.Vector2();
+function getAutoRotationAngle(){return 2*Math.PI/60/60*scope.autoRotateSpeed;}
+function getZoomScale(){return Math.pow(0.95,scope.zoomSpeed);}
+function rotateLeft(angle){sphericalDelta.theta-=angle;}
+function rotateUp(angle){sphericalDelta.phi-=angle;}
+var panLeft=function(){var v=new THREE.Vector3();return function(distance,objectMatrix){v.setFromMatrixColumn(objectMatrix,0);v.multiplyScalar(-distance);panOffset.add(v);};}();
+var panUp=function(){var v=new THREE.Vector3();return function(distance,objectMatrix){if(scope.screenSpacePanning){v.setFromMatrixColumn(objectMatrix,1);}else{v.setFromMatrixColumn(objectMatrix,0);v.crossVectors(scope.object.up,v);}v.multiplyScalar(distance);panOffset.add(v);};}();
+var pan=function(){var offset=new THREE.Vector3();return function(deltaX,deltaY){var element=scope.domElement;if(scope.object.isPerspectiveCamera){var position=scope.object.position;offset.copy(position).sub(scope.target);var targetDistance=offset.length();targetDistance*=Math.tan((scope.object.fov/2)*Math.PI/180);panLeft(2*deltaX*targetDistance/element.clientHeight,scope.object.matrix);panUp(2*deltaY*targetDistance/element.clientHeight,scope.object.matrix);}else if(scope.object.isOrthographicCamera){panLeft(deltaX*(scope.object.right-scope.object.left)/scope.object.zoom/element.clientWidth,scope.object.matrix);panUp(deltaY*(scope.object.top-scope.object.bottom)/scope.object.zoom/element.clientHeight,scope.object.matrix);}};}();
+function dollyOut(dollyScale){if(scope.object.isPerspectiveCamera){scale/=dollyScale;}else if(scope.object.isOrthographicCamera){scope.object.zoom=Math.max(scope.minZoom,Math.min(scope.maxZoom,scope.object.zoom*dollyScale));scope.object.updateProjectionMatrix();zoomChanged=true;}}
+function dollyIn(dollyScale){if(scope.object.isPerspectiveCamera){scale*=dollyScale;}else if(scope.object.isOrthographicCamera){scope.object.zoom=Math.max(scope.minZoom,Math.min(scope.maxZoom,scope.object.zoom/dollyScale));scope.object.updateProjectionMatrix();zoomChanged=true;}}
+function handleMouseDownRotate(event){rotateStart.set(event.clientX,event.clientY);}
+function handleMouseDownDolly(event){dollyStart.set(event.clientX,event.clientY);}
+function handleMouseDownPan(event){panStart.set(event.clientX,event.clientY);}
+function handleMouseMoveRotate(event){rotateEnd.set(event.clientX,event.clientY);rotateDelta.subVectors(rotateEnd,rotateStart).multiplyScalar(scope.rotateSpeed);var element=scope.domElement;rotateLeft(2*Math.PI*rotateDelta.x/element.clientHeight);rotateUp(2*Math.PI*rotateDelta.y/element.clientHeight);rotateStart.copy(rotateEnd);scope.update();}
+function handleMouseMoveDolly(event){dollyEnd.set(event.clientX,event.clientY);dollyDelta.subVectors(dollyEnd,dollyStart);if(dollyDelta.y>0){dollyOut(getZoomScale());}else if(dollyDelta.y<0){dollyIn(getZoomScale());}dollyStart.copy(dollyEnd);scope.update();}
+function handleMouseMovePan(event){panEnd.set(event.clientX,event.clientY);panDelta.subVectors(panEnd,panStart).multiplyScalar(scope.panSpeed);pan(panDelta.x,panDelta.y);panStart.copy(panEnd);scope.update();}
+function handleMouseWheel(event){if(event.deltaY<0){dollyIn(getZoomScale());}else if(event.deltaY>0){dollyOut(getZoomScale());}scope.update();}
+function handleTouchStartRotate(event){if(event.touches.length===1){rotateStart.set(event.touches[0].pageX,event.touches[0].pageY);}else{var x=0.5*(event.touches[0].pageX+event.touches[1].pageX);var y=0.5*(event.touches[0].pageY+event.touches[1].pageY);rotateStart.set(x,y);}}
+function handleTouchStartPan(event){if(event.touches.length===1){panStart.set(event.touches[0].pageX,event.touches[0].pageY);}else{var x=0.5*(event.touches[0].pageX+event.touches[1].pageX);var y=0.5*(event.touches[0].pageY+event.touches[1].pageY);panStart.set(x,y);}}
+function handleTouchStartDolly(event){var dx=event.touches[0].pageX-event.touches[1].pageX;var dy=event.touches[0].pageY-event.touches[1].pageY;var distance=Math.sqrt(dx*dx+dy*dy);dollyStart.set(0,distance);}
+function handleTouchStartDollyPan(event){if(scope.enableZoom)handleTouchStartDolly(event);if(scope.enablePan)handleTouchStartPan(event);}
+function handleTouchStartDollyRotate(event){if(scope.enableZoom)handleTouchStartDolly(event);if(scope.enableRotate)handleTouchStartRotate(event);}
+function handleTouchMoveRotate(event){if(event.touches.length===1){rotateEnd.set(event.touches[0].pageX,event.touches[0].pageY);}else{var x=0.5*(event.touches[0].pageX+event.touches[1].pageX);var y=0.5*(event.touches[0].pageY+event.touches[1].pageY);rotateEnd.set(x,y);}rotateDelta.subVectors(rotateEnd,rotateStart).multiplyScalar(scope.rotateSpeed);var element=scope.domElement;rotateLeft(2*Math.PI*rotateDelta.x/element.clientHeight);rotateUp(2*Math.PI*rotateDelta.y/element.clientHeight);rotateStart.copy(rotateEnd);}
+function handleTouchMovePan(event){if(event.touches.length===1){panEnd.set(event.touches[0].pageX,event.touches[0].pageY);}else{var x=0.5*(event.touches[0].pageX+event.touches[1].pageX);var y=0.5*(event.touches[0].pageY+event.touches[1].pageY);panEnd.set(x,y);}panDelta.subVectors(panEnd,panStart).multiplyScalar(scope.panSpeed);pan(panDelta.x,panDelta.y);panStart.copy(panEnd);}
+function handleTouchMoveDolly(event){var dx=event.touches[0].pageX-event.touches[1].pageX;var dy=event.touches[0].pageY-event.touches[1].pageY;var distance=Math.sqrt(dx*dx+dy*dy);dollyEnd.set(0,distance);dollyDelta.set(0,Math.pow(dollyEnd.y/dollyStart.y,scope.zoomSpeed));dollyOut(dollyDelta.y);dollyStart.copy(dollyEnd);}
+function handleTouchMoveDollyPan(event){if(scope.enableZoom)handleTouchMoveDolly(event);if(scope.enablePan)handleTouchMovePan(event);}
+function handleTouchMoveDollyRotate(event){if(scope.enableZoom)handleTouchMoveDolly(event);if(scope.enableRotate)handleTouchMoveRotate(event);}
+function onMouseDown(event){if(!scope.enabled)return;event.preventDefault();switch(event.button){case 0:if(!scope.enableRotate)return;handleMouseDownRotate(event);state=STATE.ROTATE;break;case 1:if(!scope.enableZoom)return;handleMouseDownDolly(event);state=STATE.DOLLY;break;case 2:if(!scope.enablePan)return;handleMouseDownPan(event);state=STATE.PAN;break;}if(state!==STATE.NONE){document.addEventListener('mousemove',onMouseMove,false);document.addEventListener('mouseup',onMouseUp,false);}}
+function onMouseMove(event){if(!scope.enabled)return;event.preventDefault();switch(state){case STATE.ROTATE:if(!scope.enableRotate)return;handleMouseMoveRotate(event);break;case STATE.DOLLY:if(!scope.enableZoom)return;handleMouseMoveDolly(event);break;case STATE.PAN:if(!scope.enablePan)return;handleMouseMovePan(event);break;}}
+function onMouseUp(){if(!scope.enabled)return;document.removeEventListener('mousemove',onMouseMove,false);document.removeEventListener('mouseup',onMouseUp,false);state=STATE.NONE;}
+function onMouseWheel(event){if(!scope.enabled||!scope.enableZoom||(state!==STATE.NONE&&state!==STATE.ROTATE))return;event.preventDefault();event.stopPropagation();handleMouseWheel(event);}
+function onTouchStart(event){if(!scope.enabled)return;event.preventDefault();switch(event.touches.length){case 1:if(!scope.enableRotate)return;handleTouchStartRotate(event);state=STATE.TOUCH_ROTATE;break;case 2:if(!scope.enableZoom&&!scope.enablePan)return;handleTouchStartDollyPan(event);state=STATE.TOUCH_DOLLY_PAN;break;default:state=STATE.NONE;}}
+function onTouchMove(event){if(!scope.enabled)return;event.preventDefault();event.stopPropagation();switch(state){case STATE.TOUCH_ROTATE:if(!scope.enableRotate)return;handleTouchMoveRotate(event);scope.update();break;case STATE.TOUCH_PAN:if(!scope.enablePan)return;handleTouchMovePan(event);scope.update();break;case STATE.TOUCH_DOLLY_PAN:if(!scope.enableZoom&&!scope.enablePan)return;handleTouchMoveDollyPan(event);scope.update();break;case STATE.TOUCH_DOLLY_ROTATE:if(!scope.enableZoom&&!scope.enableRotate)return;handleTouchMoveDollyRotate(event);scope.update();break;default:state=STATE.NONE;}}
+function onTouchEnd(){if(!scope.enabled)return;state=STATE.NONE;}
+function onContextMenu(event){if(!scope.enabled)return;event.preventDefault();}
+scope.domElement.addEventListener('contextmenu',onContextMenu,false);
+scope.domElement.addEventListener('mousedown',onMouseDown,false);
+scope.domElement.addEventListener('wheel',onMouseWheel,{passive:false});
+scope.domElement.addEventListener('touchstart',onTouchStart,{passive:false});
+scope.domElement.addEventListener('touchend',onTouchEnd,false);
+scope.domElement.addEventListener('touchmove',onTouchMove,{passive:false});
+this.update=function(){var offset=new THREE.Vector3();var quat=new THREE.Quaternion().setFromUnitVectors(object.up,new THREE.Vector3(0,1,0));var quatInverse=quat.clone().inverse();var lastPosition=new THREE.Vector3();var lastQuaternion=new THREE.Quaternion();return function update(){var position=scope.object.position;offset.copy(position).sub(scope.target);offset.applyQuaternion(quat);spherical.setFromVector3(offset);if(scope.autoRotate&&state===STATE.NONE){rotateLeft(getAutoRotationAngle());}if(scope.enableDamping){spherical.theta+=sphericalDelta.theta*scope.dampingFactor;spherical.phi+=sphericalDelta.phi*scope.dampingFactor;}else{spherical.theta+=sphericalDelta.theta;spherical.phi+=sphericalDelta.phi;}var min=scope.minAzimuthAngle;var max=scope.maxAzimuthAngle;if(isFinite(min)&&isFinite(max)){if(min<-Math.PI)min+=2*Math.PI;else if(min>Math.PI)min-=2*Math.PI;if(max<-Math.PI)max+=2*Math.PI;else if(max>Math.PI)max-=2*Math.PI;if(min<=max){spherical.theta=Math.max(min,Math.min(max,spherical.theta));}else{spherical.theta=(spherical.theta>((min+max)/2)?Math.max(min,spherical.theta):Math.min(max,spherical.theta));}}spherical.phi=Math.max(scope.minPolarAngle,Math.min(scope.maxPolarAngle,spherical.phi));spherical.makeSafe();spherical.radius*=scale;spherical.radius=Math.max(scope.minDistance,Math.min(scope.maxDistance,spherical.radius));scope.target.addScaledVector(panOffset,scope.enableDamping?scope.dampingFactor:1);offset.setFromSpherical(spherical);offset.applyQuaternion(quatInverse);position.copy(scope.target).add(offset);scope.object.lookAt(scope.target);if(scope.enableDamping){sphericalDelta.theta*=(1-scope.dampingFactor);sphericalDelta.phi*=(1-scope.dampingFactor);panOffset.multiplyScalar(1-scope.dampingFactor);}else{sphericalDelta.set(0,0,0);panOffset.set(0,0,0);}scale=1;if(zoomChanged||lastPosition.distanceToSquared(scope.object.position)>EPS||8*(1-lastQuaternion.dot(scope.object.quaternion))>EPS){lastPosition.copy(scope.object.position);lastQuaternion.copy(scope.object.quaternion);zoomChanged=false;return true;}return false;};}();
+this.dispose=function(){scope.domElement.removeEventListener('contextmenu',onContextMenu,false);scope.domElement.removeEventListener('mousedown',onMouseDown,false);scope.domElement.removeEventListener('wheel',onMouseWheel,false);scope.domElement.removeEventListener('touchstart',onTouchStart,false);scope.domElement.removeEventListener('touchend',onTouchEnd,false);scope.domElement.removeEventListener('touchmove',onTouchMove,false);document.removeEventListener('mousemove',onMouseMove,false);document.removeEventListener('mouseup',onMouseUp,false);};
+this.update();
+};
+THREE.OrbitControls.prototype=Object.create(THREE.EventDispatcher.prototype);
+THREE.OrbitControls.prototype.constructor=THREE.OrbitControls;
+})();
+</script>
+<script>
+// =========================================================
+// GAME STATE
+// =========================================================
+const MISTRAL_KEYS = ['9GD4i61YFOjDaMCpcs9XF2clvlYRf7EZ','G9CuVLq1Sfw7BZr4kSBuCReNrHvQNsno'];
+let currentKeyIdx = 0;
+
+let difficulty = 'easy';
+let playerTurn = true; // true = player (light/gold), false = AI (dark)
+let boardState = []; // 8x8, each cell: null | {color:'light'|'dark', king:bool}
+let selectedPiece = null; // {row,col}
+let validMoves = [];
+let mustCapturePiece = null; // for series captures
+let gameHistory = []; // for undo
+let chatHistory = [];
+let scores = { player: 0, ai: 0 };
+let tutorialMode = false;
+let tutorialStep = 0;
+let gameActive = true;
+let isAiThinking = false;
+let chatCollapsed = false;
+
+// =========================================================
+// THREE.JS SETUP
+// =========================================================
+let scene, camera, renderer, controls;
+let boardMeshes = {};
+let pieceMeshes = {}; // key: "row_col"
+let particleSystems = [];
+let highlightMeshes = [];
+let raycaster = new THREE.Raycaster();
+let mouse = new THREE.Vector2();
+let animatingPiece = null;
+let clock = new THREE.Clock();
+
+const BOARD_SIZE = 8;
+const CELL_SIZE = 1.15;
+const BOARD_OFFSET = (BOARD_SIZE * CELL_SIZE) / 2 - CELL_SIZE / 2;
+
+function initThree() {
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x020100);
+  scene.fog = new THREE.FogExp2(0x020100, 0.045);
+
+  camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 200);
+  camera.position.set(0, 11, 11);
+  camera.lookAt(0, 0, 0);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.2;
+  document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.target.set(0, 0, 0);
+  controls.minDistance = 6;
+  controls.maxDistance = 22;
+  controls.maxPolarAngle = Math.PI / 2.05;
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.update();
+
+  // Lighting
+  const ambient = new THREE.AmbientLight(0x1a1000, 0.8);
+  scene.add(ambient);
+
+  const spot1 = new THREE.SpotLight(0xFFD060, 3.5, 40, Math.PI/5, 0.5, 1.5);
+  spot1.position.set(4, 14, 6);
+  spot1.castShadow = true;
+  spot1.shadow.mapSize.width = 2048;
+  spot1.shadow.mapSize.height = 2048;
+  scene.add(spot1);
+
+  const spot2 = new THREE.SpotLight(0xFFA020, 2, 30, Math.PI/5, 0.5, 2);
+  spot2.position.set(-5, 10, -4);
+  scene.add(spot2);
+
+  const ptLight = new THREE.PointLight(0xFFCC44, 1.2, 25);
+  ptLight.position.set(0, 8, 0);
+  scene.add(ptLight);
+
+  const ptLight2 = new THREE.PointLight(0xFF8800, 0.5, 18);
+  ptLight2.position.set(5, 3, 5);
+  scene.add(ptLight2);
+
+  buildBoard();
+  window.addEventListener('resize', onResize);
+  renderer.domElement.addEventListener('click', onCanvasClick, false);
+  renderer.domElement.addEventListener('touchend', onTouchEnd2, false);
+  animate();
+}
+
+function buildBoard() {
+  // Board base
+  const baseGeo = new THREE.BoxGeometry(BOARD_SIZE * CELL_SIZE + 0.5, 0.22, BOARD_SIZE * CELL_SIZE + 0.5);
+  const baseMat = new THREE.MeshStandardMaterial({
+    color: 0x1a1200, metalness: 0.6, roughness: 0.3
+  });
+  const base = new THREE.Mesh(baseGeo, baseMat);
+  base.position.y = -0.18;
+  base.receiveShadow = true;
+  scene.add(base);
+
+  // Border
+  const borderGeo = new THREE.BoxGeometry(BOARD_SIZE * CELL_SIZE + 0.8, 0.28, BOARD_SIZE * CELL_SIZE + 0.8);
+  const borderMat = new THREE.MeshStandardMaterial({
+    color: 0xAA8830, metalness: 0.95, roughness: 0.1,
+    envMapIntensity: 1.5
+  });
+  const border = new THREE.Mesh(borderGeo, borderMat);
+  border.position.y = -0.22;
+  border.receiveShadow = true;
+  scene.add(border);
+
+  for (let r = 0; r < BOARD_SIZE; r++) {
+    for (let c = 0; c < BOARD_SIZE; c++) {
+      const isDark = (r + c) % 2 === 1;
+      const geo = new THREE.BoxGeometry(CELL_SIZE - 0.04, 0.09, CELL_SIZE - 0.04);
+      const mat = isDark
+        ? new THREE.MeshStandardMaterial({ color: 0x8B6610, metalness: 0.7, roughness: 0.25 })
+        : new THREE.MeshStandardMaterial({ color: 0x0a0a0a, metalness: 0.2, roughness: 0.7 });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(
+        c * CELL_SIZE - BOARD_OFFSET,
+        0,
+        r * CELL_SIZE - BOARD_OFFSET
+      );
+      mesh.receiveShadow = true;
+      mesh.userData = { type: 'cell', row: r, col: c };
+      scene.add(mesh);
+      boardMeshes[`${r}_${c}`] = mesh;
+    }
+  }
+}
+
+function cellPos(row, col) {
+  return new THREE.Vector3(
+    col * CELL_SIZE - BOARD_OFFSET,
+    0.28,
+    row * CELL_SIZE - BOARD_OFFSET
+  );
+}
+
+// =========================================================
+// PIECE MATERIALS
+// =========================================================
+function makePieceMat(color, king) {
+  if (color === 'light') {
+    return new THREE.MeshStandardMaterial({
+      color: 0xD4A017, metalness: 1.0, roughness: 0.08,
+      emissive: king ? 0xFFCC00 : 0x3D2700, emissiveIntensity: king ? 0.5 : 0.15
+    });
+  } else {
+    return new THREE.MeshStandardMaterial({
+      color: 0x141414, metalness: 0.6, roughness: 0.35,
+      emissive: king ? 0x4A3800 : 0x000000, emissiveIntensity: king ? 0.6 : 0
+    });
+  }
+}
+
+function createPieceMesh(row, col, color, king=false) {
+  const group = new THREE.Group();
+  // Main disc
+  const geo = new THREE.CylinderGeometry(0.42, 0.44, 0.18, 32);
+  const mat = makePieceMat(color, king);
+  const disc = new THREE.Mesh(geo, mat);
+  disc.castShadow = true;
+  disc.receiveShadow = true;
+  group.add(disc);
+
+  // Edge ring
+  const ringGeo = new THREE.TorusGeometry(0.42, 0.03, 12, 48);
+  const ringMat = new THREE.MeshStandardMaterial({
+    color: color === 'light' ? 0xFFE060 : 0x303030, metalness: 1, roughness: 0.05
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.09;
+  group.add(ring);
+
+  if (king) {
+    addKingCrown(group, color);
+  }
+
+  const pos = cellPos(row, col);
+  group.position.copy(pos);
+  group.userData = { type: 'piece', row, col, color, king };
+  scene.add(group);
+  pieceMeshes[`${row}_${col}`] = group;
+  return group;
+}
+
+function addKingCrown(group, color) {
+  // Crown: small cylinder on top
+  const crownMat = new THREE.MeshStandardMaterial({
+    color: color === 'light' ? 0xFFD700 : 0x888888,
+    metalness: 1, roughness: 0.05,
+    emissive: color === 'light' ? 0xFFAA00 : 0x444444,
+    emissiveIntensity: 0.8
+  });
+  const crownBase = new THREE.CylinderGeometry(0.28, 0.32, 0.1, 8);
+  const cm = new THREE.Mesh(crownBase, crownMat);
+  cm.position.y = 0.18;
+  group.add(cm);
+
+  // Points of crown
+  for (let i = 0; i < 5; i++) {
+    const angle = (i / 5) * Math.PI * 2;
+    const pt = new THREE.ConeGeometry(0.07, 0.18, 6);
+    const ptm = new THREE.Mesh(pt, crownMat);
+    ptm.position.set(Math.cos(angle) * 0.22, 0.32, Math.sin(angle) * 0.22);
+    group.add(ptm);
+  }
+
+  // Glow ring
+  const glowGeo = new THREE.TorusGeometry(0.34, 0.025, 8, 32);
+  const glowMat = new THREE.MeshStandardMaterial({
+    color: color === 'light' ? 0xFFD700 : 0xAAAAAA,
+    metalness: 1, roughness: 0, emissive: color === 'light' ? 0xFFAA00 : 0x666666,
+    emissiveIntensity: 1.5, transparent: true, opacity: 0.9
+  });
+  const glowRing = new THREE.Mesh(glowGeo, glowMat);
+  glowRing.rotation.x = Math.PI / 2;
+  glowRing.position.y = 0.28;
+  group.add(glowRing);
+}
+
+function removePieceMesh(row, col) {
+  const key = `${row}_${col}`;
+  const mesh = pieceMeshes[key];
+  if (mesh) {
+    spawnParticles(mesh.position.clone(), mesh.userData.color);
+    scene.remove(mesh);
+    delete pieceMeshes[key];
+  }
+}
+
+function updatePieceMeshPosition(oldRow, oldCol, newRow, newCol, onDone) {
+  const key = `${oldRow}_${oldCol}`;
+  const mesh = pieceMeshes[key];
+  if (!mesh) { if (onDone) onDone(); return; }
+  delete pieceMeshes[key];
+  pieceMeshes[`${newRow}_${newCol}`] = mesh;
+  mesh.userData.row = newRow;
+  mesh.userData.col = newCol;
+
+  const startPos = mesh.position.clone();
+  const endPos = cellPos(newRow, newCol);
+  const midY = 1.5;
+  let t = 0;
+  animatingPiece = { mesh, startPos, endPos, midY, t, done: false, onDone };
+}
+
+function spawnParticles(pos, color) {
+  const count = 40;
+  const geo = new THREE.BufferGeometry();
+  const positions = new Float32Array(count * 3);
+  const velocities = [];
+  for (let i = 0; i < count; i++) {
+    positions[i * 3] = pos.x;
+    positions[i * 3 + 1] = pos.y;
+    positions[i * 3 + 2] = pos.z;
+    velocities.push(new THREE.Vector3(
+      (Math.random() - 0.5) * 2.5,
+      Math.random() * 2 + 0.5,
+      (Math.random() - 0.5) * 2.5
+    ));
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const mat = new THREE.PointsMaterial({
+    color: color === 'light' ? 0xFFD700 : 0x888888,
+    size: 0.09, transparent: true, opacity: 1,
+    blending: THREE.AdditiveBlending, depthWrite: false
+  });
+  const pts = new THREE.Points(geo, mat);
+  scene.add(pts);
+  particleSystems.push({ pts, velocities, life: 1.0 });
+}
+
+// =========================================================
+// HIGHLIGHT MESHES
+// =========================================================
+function clearHighlights() {
+  highlightMeshes.forEach(m => scene.remove(m));
+  highlightMeshes = [];
+}
+
+function highlightCell(row, col, hexColor = 0xFFD700, pulse = false) {
+  const geo = new THREE.BoxGeometry(CELL_SIZE - 0.06, 0.02, CELL_SIZE - 0.06);
+  const mat = new THREE.MeshStandardMaterial({
+    color: hexColor, transparent: true, opacity: 0.55,
+    emissive: hexColor, emissiveIntensity: 0.9,
+    depthWrite: false
+  });
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(col * CELL_SIZE - BOARD_OFFSET, 0.06, row * CELL_SIZE - BOARD_OFFSET);
+  m.userData.pulse = pulse;
+  m.userData.origOpacity = 0.55;
+  scene.add(m);
+  highlightMeshes.push(m);
+}
+
+function highlightSelectedPiece(row, col) {
+  const geo = new THREE.CylinderGeometry(0.5, 0.5, 0.03, 32);
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0xFFD700, transparent: true, opacity: 0.7,
+    emissive: 0xFFD700, emissiveIntensity: 1.2, depthWrite: false
+  });
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(col * CELL_SIZE - BOARD_OFFSET, 0.1, row * CELL_SIZE - BOARD_OFFSET);
+  scene.add(m);
+  highlightMeshes.push(m);
+}
+
+// =========================================================
+// BOARD LOGIC
+// =========================================================
+function initBoard() {
+  boardState = [];
+  for (let r = 0; r < 8; r++) {
+    boardState.push([]);
+    for (let c = 0; c < 8; c++) {
+      boardState[r].push(null);
+    }
+  }
+  // Light pieces (player) rows 5-7
+  for (let r = 5; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      if ((r + c) % 2 === 1) boardState[r][c] = { color: 'light', king: false };
+    }
+  }
+  // Dark pieces (AI) rows 0-2
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 8; c++) {
+      if ((r + c) % 2 === 1) boardState[r][c] = { color: 'dark', king: false };
+    }
+  }
+}
+
+function renderPieces() {
+  // Remove old
+  Object.keys(pieceMeshes).forEach(k => {
+    scene.remove(pieceMeshes[k]);
+    delete pieceMeshes[k];
+  });
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      if (boardState[r][c]) {
+        const p = boardState[r][c];
+        createPieceMesh(r, c, p.color, p.king);
+      }
+    }
+  }
+}
+
+function cloneBoard(board) {
+  return board.map(row => row.map(cell => cell ? { ...cell } : null));
+}
+
+// =========================================================
+// MOVE GENERATION (Russian Checkers rules)
+// =========================================================
+function getCaptureMoves(board, row, col, color, king, chainCaptures = []) {
+  const dirs = king
+    ? [[-1,-1],[-1,1],[1,-1],[1,1]]
+    : (color === 'light' ? [[-1,-1],[-1,1],[1,-1],[1,1]] : [[-1,-1],[-1,1],[1,-1],[1,1]]);
+  const enemy = color === 'light' ? 'dark' : 'light';
+  const captures = [];
+
+  for (const [dr, dc] of dirs) {
+    if (king) {
+      // King can capture any distance
+      let sr = row + dr, sc = col + dc;
+      let foundEnemy = null, foundR = -1, foundC = -1;
+      while (sr >= 0 && sr < 8 && sc >= 0 && sc < 8) {
+        if (board[sr][sc]) {
+          if (board[sr][sc].color === enemy && !chainCaptures.find(cp=>cp.row===sr&&cp.col===sc)) {
+            if (!foundEnemy) { foundEnemy = true; foundR = sr; foundC = sc; }
+            else break;
+          } else break;
+        } else if (foundEnemy) {
+          captures.push({ toRow: sr, toCol: sc, capRow: foundR, capCol: foundC });
+        }
+        sr += dr; sc += dc;
+      }
+    } else {
+      const mr = row + dr, mc = col + dc;
+      const lr = row + 2*dr, lc = col + 2*dc;
+      if (lr >= 0 && lr < 8 && lc >= 0 && lc < 8) {
+        if (board[mr] && board[mr][mc] && board[mr][mc].color === enemy &&
+            !chainCaptures.find(cp=>cp.row===mr&&cp.col===mc) &&
+            board[lr][lc] === null) {
+          captures.push({ toRow: lr, toCol: lc, capRow: mr, capCol: mc });
+        }
+      }
+    }
+  }
+  return captures;
+}
+
+function getSimpleMoves(board, row, col, color, king) {
+  const dirs = king
+    ? [[-1,-1],[-1,1],[1,-1],[1,1]]
+    : (color === 'light' ? [[-1,-1],[-1,1]] : [[1,-1],[1,1]]);
+  const moves = [];
+  for (const [dr, dc] of dirs) {
+    if (king) {
+      let sr = row + dr, sc = col + dc;
+      while (sr >= 0 && sr < 8 && sc >= 0 && sc < 8) {
+        if (board[sr][sc]) break;
+        moves.push({ toRow: sr, toCol: sc });
+        sr += dr; sc += dc;
+      }
+    } else {
+      const nr = row + dr, nc = col + dc;
+      if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && !board[nr][nc]) {
+        moves.push({ toRow: nr, toCol: nc });
+      }
+    }
+  }
+  return moves;
+}
+
+function getAllMoves(board, color) {
+  const allCaptures = [];
+  const allSimple = [];
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      if (board[r][c] && board[r][c].color === color) {
+        const p = board[r][c];
+        const caps = getCaptureMoves(board, r, c, color, p.king);
+        caps.forEach(mv => allCaptures.push({ fromRow: r, fromCol: c, ...mv }));
+        if (caps.length === 0) {
+          const simples = getSimpleMoves(board, r, c, color, p.king);
+          simples.forEach(mv => allSimple.push({ fromRow: r, fromCol: c, ...mv }));
+        }
+      }
+    }
+  }
+  return allCaptures.length > 0 ? allCaptures : allSimple;
+}
+
+function getMovesForPiece(board, row, col) {
+  if (!board[row][col]) return [];
+  const p = board[row][col];
+  const allMoves = getAllMoves(board, p.color);
+  const hasCaps = allMoves.some(m => m.capRow !== undefined);
+  const pieceMoves = allMoves.filter(m => m.fromRow === row && m.fromCol === col);
+  if (hasCaps) return pieceMoves.filter(m => m.capRow !== undefined);
+  return pieceMoves;
+}
+
+function applyMove(board, move) {
+  const nb = cloneBoard(board);
+  const piece = nb[move.fromRow][move.fromCol];
+  nb[move.toRow][move.toCol] = piece;
+  nb[move.fromRow][move.fromCol] = null;
+  if (move.capRow !== undefined) {
+    nb[move.capRow][move.capCol] = null;
+  }
+  // King promotion
+  if (piece.color === 'light' && move.toRow === 0) piece.king = true;
+  if (piece.color === 'dark' && move.toRow === 7) piece.king = true;
+  return nb;
+}
+
+function countPieces(board) {
+  let light = 0, dark = 0, lightK = 0, darkK = 0;
+  for (let r = 0; r < 8; r++)
+    for (let c = 0; c < 8; c++) {
+      if (board[r][c]) {
+        if (board[r][c].color === 'light') { light++; if (board[r][c].king) lightK++; }
+        else { dark++; if (board[r][c].king) darkK++; }
+      }
+    }
+  return { light, dark, lightK, darkK };
+}
+
+function evaluateBoard(board) {
+  const cnt = countPieces(board);
+  return (cnt.light + cnt.lightK * 2.5) - (cnt.dark + cnt.darkK * 2.5);
+}
+
+// =========================================================
+// AI (Minimax + Mistral)
+// =========================================================
+function minimax(board, depth, alpha, beta, maximizing) {
+  const color = maximizing ? 'dark' : 'light';
+  const moves = getAllMoves(board, color);
+  if (depth === 0 || moves.length === 0) return evaluateBoard(board);
+
+  if (maximizing) {
+    let maxEval = -Infinity;
+    for (const mv of moves) {
+      const nb = applyMove(board, mv);
+      const ev = minimax(nb, depth - 1, alpha, beta, false);
+      maxEval = Math.max(maxEval, ev);
+      alpha = Math.max(alpha, ev);
+      if (beta <= alpha) break;
+    }
+    return maxEval;
+  } else {
+    let minEval = Infinity;
+    for (const mv of moves) {
+      const nb = applyMove(board, mv);
+      const ev = minimax(nb, depth - 1, alpha, beta, true);
+      minEval = Math.min(minEval, ev);
+      beta = Math.min(beta, ev);
+      if (beta <= alpha) break;
+    }
+    return minEval;
+  }
+}
+
+function getBestMove(board, depth = 3) {
+  const moves = getAllMoves(board, 'dark');
+  if (!moves.length) return null;
+  let best = null, bestScore = -Infinity;
+  for (const mv of moves) {
+    const nb = applyMove(board, mv);
+    const score = minimax(nb, depth - 1, -Infinity, Infinity, false);
+    if (score > bestScore) { bestScore = score; best = mv; }
+  }
+  return best;
+}
+
+function getEasyMove(board) {
+  const moves = getAllMoves(board, 'dark');
+  if (!moves.length) return null;
+  // With some probability make a bad move
+  if (Math.random() < 0.45) return moves[Math.floor(Math.random() * moves.length)];
+  return getBestMove(board, 2);
+}
+
+function getAIMove() {
+  if (difficulty === 'easy') return getEasyMove(boardState);
+  if (difficulty === 'standard') return getBestMove(boardState, 3);
+  return getBestMove(boardState, 5);
+}
+
+// =========================================================
+// MISTRAL API
+// =========================================================
+function cleanMarkdown(text) {
+  return text
+    .replace(/\*\*/g, '').replace(/\*/g, '')
+    .replace(/#{1,6}\s/g, '').replace(/#/g, '')
+    .replace(/`{1,3}/g, '').replace(/_{1,2}/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^\s*[-•]\s/gm, '').trim();
+}
+
+async function callMistral(systemPrompt, userMessage) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const key = MISTRAL_KEYS[currentKeyIdx];
+      const resp = await fetch('https://api.mistral.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+        body: JSON.stringify({
+          model: 'mistral-tiny',
+          messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }],
+          max_tokens: 150, temperature: 0.8
+        })
+      });
+      if (resp.status === 401 || resp.status === 429) {
+        currentKeyIdx = (currentKeyIdx + 1) % MISTRAL_KEYS.length;
+        continue;
+      }
+      const data = await resp.json();
+      return cleanMarkdown(data.choices[0].message.content);
+    } catch (e) {
+      currentKeyIdx = (currentKeyIdx + 1) % MISTRAL_KEYS.length;
+    }
+  }
+  return null;
+}
+
+function getSystemPrompt() {
+  const prompts = {
+    easy: 'Ты дружелюбный ИИ-соперник в шашках. Ты играешь слабо, иногда делаешь ошибки. Комментируй свои ходы кратко по-русски (1-2 предложения), давай игроку советы и подбадривай его. Не используй Markdown.',
+    standard: 'Ты ИИ-соперник в шашках среднего уровня. Комментируй свои ходы по-русски (1-2 предложения), анализируй позицию коротко. Не используй Markdown.',
+    hard: 'Ты сильный ИИ-соперник в шашках. Играешь на победу. Комментируй свои ходы по-русски (1-2 предложения), немного устрашай соперника. Не используй Markdown.'
+  };
+  return prompts[difficulty];
+}
+
+async function getAIComment(move, cnt) {
+  const sys = getSystemPrompt();
+  const msg = `Ты сделал ход с (${move.fromRow},${move.fromCol}) на (${move.toRow},${move.toCol})${move.capRow !== undefined ? ', при этом съел шашку соперника' : ''}. На доске у тебя ${cnt.dark} шашек (${cnt.darkK} дамок), у соперника ${cnt.light} (${cnt.lightK} дамок). Напиши короткий комментарий к ходу.`;
+  return await callMistral(sys, msg);
+}
+
+async function getAnalysis() {
+  const cnt = countPieces(boardState);
+  const score = evaluateBoard(boardState);
+  const sys = 'Ты аналитик шашечной позиции. Отвечай по-русски одним кратким предложением. Не используй Markdown.';
+  const msg = `У игрока (светлые) ${cnt.light} шашек (${cnt.lightK} дамок), у ИИ (тёмные) ${cnt.dark} (${cnt.darkK} дамок). Числовая оценка: ${score.toFixed(1)} (положительная — выгода игрока). Кто имеет преимущество?`;
+  const res = await callMistral(sys, msg);
+  return res || simpleAnalysis(cnt, score);
+}
+
+function simpleAnalysis(cnt, score) {
+  if (Math.abs(score) < 0.5) return 'Позиция равная.';
+  if (score > 0) return `Преимущество у игрока (+${score.toFixed(1)}).`;
+  return `Преимущество у ИИ (${score.toFixed(1)}).`;
+}
+
+// =========================================================
+// CHAT
+// =========================================================
+function addChatMsg(text, type = 'ai') {
+  const msgs = document.getElementById('chat-messages');
+  const d = document.createElement('div');
+  d.className = `chat-msg ${type}`;
+  d.textContent = text;
+  msgs.appendChild(d);
+  msgs.scrollTop = msgs.scrollHeight;
+  chatHistory.push({ type, text });
+  saveState();
+}
+
+function setStatus(text) {
+  document.getElementById('status-bar').textContent = text;
+}
+
+function toggleChat() {
+  chatCollapsed = !chatCollapsed;
+  const panel = document.getElementById('chat-panel');
+  const btn = document.getElementById('chat-toggle-btn');
+  panel.classList.toggle('collapsed', chatCollapsed);
+  btn.textContent = chatCollapsed ? '▼' : '▲';
+}
+
+// =========================================================
+// GAME FLOW
+// =========================================================
+function newGame() {
+  document.getElementById('winner-overlay').classList.remove('show');
+  gameActive = true;
+  playerTurn = true;
+  selectedPiece = null;
+  mustCapturePiece = null;
+  gameHistory = [];
+  isAiThinking = false;
+  clearHighlights();
+  initBoard();
+  renderPieces();
+  setStatus('Ваш ход');
+  addChatMsg('Новая игра началась! Ваши шашки — золотые. Удачи!', 'sys');
+  saveState();
+  updateScoreDisplay();
+  updateAnalysis();
+}
+
+function setDifficulty(diff) {
+  difficulty = diff;
+  document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(`d-${diff === 'standard' ? 'std' : diff}`).classList.add('active');
+  addChatMsg(`Сложность изменена: ${diff === 'easy' ? 'Легко' : diff === 'standard' ? 'Стандарт' : 'Сложно'}.`, 'sys');
+  saveState();
+}
+
+function updateScoreDisplay() {
+  document.getElementById('score-player').textContent = scores.player;
+  document.getElementById('score-ai').textContent = scores.ai;
+}
+
+async function updateAnalysis() {
+  const cnt = countPieces(boardState);
+  const score = evaluateBoard(boardState);
+  const text = simpleAnalysis(cnt, score);
+  document.getElementById('analysis-text').textContent = text;
+  // Async AI analysis (don't block)
+  getAnalysis().then(res => {
+    if (res) document.getElementById('analysis-text').textContent = res;
+  });
+}
+
+// =========================================================
+// PLAYER INTERACTION
+// =========================================================
+function getMouseBoard(event) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  let clientX = event.clientX, clientY = event.clientY;
+  if (event.touches) { clientX = event.touches[0].clientX; clientY = event.touches[0].clientY; }
+  mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const objects = Object.values(boardMeshes).concat(Object.values(pieceMeshes).map(g => g.children[0]));
+  const hits = raycaster.intersectObjects(objects, true);
+  if (!hits.length) return null;
+  const obj = hits[0].object;
+  if (obj.parent && obj.parent.userData.type === 'piece') return obj.parent.userData;
+  if (obj.userData.type === 'cell') return obj.userData;
+  if (obj.userData.type === 'piece') return obj.userData;
+  return null;
+}
+
+function onCanvasClick(event) {
+  if (!gameActive || !playerTurn || isAiThinking || animatingPiece) return;
+  const hit = getMouseBoard(event);
+  if (!hit) return;
+  handleBoardClick(hit.row, hit.col);
+}
+
+function onTouchEnd2(event) {
+  if (!gameActive || !playerTurn || isAiThinking || animatingPiece) return;
+  if (event.changedTouches && event.changedTouches.length) {
+    const touch = event.changedTouches[0];
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    const objects = Object.values(boardMeshes).concat(Object.values(pieceMeshes).map(g=>g.children[0]));
+    const hits = raycaster.intersectObjects(objects, true);
+    if (!hits.length) return;
+    const obj = hits[0].object;
+    let row, col;
+    if (obj.parent && obj.parent.userData.type === 'piece') { row = obj.parent.userData.row; col = obj.parent.userData.col; }
+    else if (obj.userData.row !== undefined) { row = obj.userData.row; col = obj.userData.col; }
+    else return;
+    handleBoardClick(row, col);
+  }
+}
+
+function handleBoardClick(row, col) {
+  if (tutorialMode) { handleTutorialClick(row, col); return; }
+
+  // If a piece is selected and we click a valid move target
+  if (selectedPiece) {
+    const move = validMoves.find(m => m.toRow === row && m.toCol === col);
+    if (move) {
+      executePlayerMove(move);
+      return;
+    }
+    // Deselect
+    selectedPiece = null;
+    clearHighlights();
+    validMoves = [];
+  }
+
+  // Select piece
+  if (mustCapturePiece) {
+    if (row !== mustCapturePiece.row || col !== mustCapturePiece.col) return;
+  }
+  const cell = boardState[row][col];
+  if (cell && cell.color === 'light') {
+    const moves = getMovesForPiece(boardState, row, col);
+    if (moves.length === 0) { setStatus('Этой шашкой нельзя ходить.'); return; }
+    selectedPiece = { row, col };
+    validMoves = moves;
+    clearHighlights();
+    highlightSelectedPiece(row, col);
+    moves.forEach(m => highlightCell(m.toRow, m.toCol, m.capRow !== undefined ? 0xFF4400 : 0xFFD700));
+    setStatus('Выберите клетку для хода');
+  }
+}
+
+function executePlayerMove(move) {
+  // Save history
+  gameHistory.push({ board: cloneBoard(boardState), playerTurn: true, mustCapturePiece });
+  clearHighlights();
+
+  const wasCapture = move.capRow !== undefined;
+  boardState = applyMove(boardState, move);
+
+  // Animate piece
+  if (wasCapture) {
+    updatePieceMeshPosition(move.fromRow, move.fromCol, move.toRow, move.toCol, () => {
+      removePieceMesh(move.capRow, move.capCol);
+      promoteKingVisual(move.toRow, move.toCol);
+      // Check series capture
+      const nextCaps = getCaptureMoves(boardState, move.toRow, move.toCol, 'light', boardState[move.toRow][move.toCol].king);
+      if (nextCaps.length > 0) {
+        mustCapturePiece = { row: move.toRow, col: move.toCol };
+        selectedPiece = { row: move.toRow, col: move.toCol };
+        validMoves = nextCaps.map(c => ({ ...c, fromRow: move.toRow, fromCol: move.toCol }));
+        clearHighlights();
+        highlightSelectedPiece(move.toRow, move.toCol);
+        validMoves.forEach(m => highlightCell(m.toRow, m.toCol, 0xFF4400));
+        setStatus('Продолжайте серию взятий!');
+      } else {
+        finishPlayerTurn();
+      }
+    });
+  } else {
+    updatePieceMeshPosition(move.fromRow, move.fromCol, move.toRow, move.toCol, () => {
+      promoteKingVisual(move.toRow, move.toCol);
+      finishPlayerTurn();
+    });
+  }
+  selectedPiece = null;
+  validMoves = [];
+  mustCapturePiece = null;
+}
+
+function promoteKingVisual(row, col) {
+  const p = boardState[row][col];
+  if (!p) return;
+  const mesh = pieceMeshes[`${row}_${col}`];
+  if (!mesh) return;
+  if (p.king && !mesh.userData.king) {
+    mesh.userData.king = true;
+    // Update material
+    mesh.children[0].material = makePieceMat(p.color, true);
+    addKingCrown(mesh, p.color);
+    spawnParticles(mesh.position, p.color);
+  }
+}
+
+function finishPlayerTurn() {
+  mustCapturePiece = null;
+  selectedPiece = null;
+  clearHighlights();
+  updateAnalysis();
+  if (checkWin()) return;
+  playerTurn = false;
+  setStatus('ИИ думает...');
+  setTimeout(aiTurn, 700);
+}
+
+async function aiTurn() {
+  if (!gameActive) return;
+  isAiThinking = true;
+  const move = getAIMove();
+  if (!move) {
+    showWinner('player');
+    isAiThinking = false;
+    return;
+  }
+
+  // Save history
+  gameHistory.push({ board: cloneBoard(boardState), playerTurn: false, mustCapturePiece: null });
+
+  const wasCapture = move.capRow !== undefined;
+  boardState = applyMove(boardState, move);
+  const cnt = countPieces(boardState);
+
+  updatePieceMeshPosition(move.fromRow, move.fromCol, move.toRow, move.toCol, async () => {
+    if (wasCapture) removePieceMesh(move.capRow, move.capCol);
+    promoteKingVisual(move.toRow, move.toCol);
+
+    // Series capture for AI
+    if (wasCapture) {
+      const nextCaps = getCaptureMoves(boardState, move.toRow, move.toCol, 'dark', boardState[move.toRow][move.toCol].king);
+      if (nextCaps.length > 0) {
+        const nextMove = { fromRow: move.toRow, fromCol: move.toCol, ...nextCaps[0] };
+        boardState = applyMove(boardState, nextMove);
+        setTimeout(() => {
+          updatePieceMeshPosition(nextMove.fromRow, nextMove.fromCol, nextMove.toRow, nextMove.toCol, () => {
+            removePieceMesh(nextMove.capRow, nextMove.capCol);
+            promoteKingVisual(nextMove.toRow, nextMove.toCol);
+            finishAiTurn(move, cnt);
+          });
+        }, 500);
+        return;
+      }
+    }
+    finishAiTurn(move, cnt);
+  });
+}
+
+async function finishAiTurn(move, cnt) {
+  updateAnalysis();
+  if (checkWin()) { isAiThinking = false; return; }
+  playerTurn = true;
+  isAiThinking = false;
+  setStatus('Ваш ход');
+  saveState();
+
+  // Get AI comment
+  const comment = await getAIComment(move, cnt);
+  if (comment) addChatMsg(comment, 'ai');
+  else addChatMsg('Интересный ход...', 'ai');
+}
+
+function checkWin() {
+  const cnt = countPieces(boardState);
+  if (cnt.light === 0 || getAllMoves(boardState, 'light').length === 0) {
+    showWinner('ai'); return true;
+  }
+  if (cnt.dark === 0 || getAllMoves(boardState, 'dark').length === 0) {
+    showWinner('player'); return true;
+  }
+  return false;
+}
+
+function showWinner(winner) {
+  gameActive = false;
+  if (winner === 'player') {
+    scores.player++;
+    document.getElementById('winner-title').textContent = 'Вы победили!';
+    document.getElementById('winner-sub').textContent = 'Прекрасная игра! Золото ваше.';
+    addChatMsg('Поздравляю с победой! Вы играли отлично.', 'ai');
+  } else {
+    scores.ai++;
+    document.getElementById('winner-title').textContent = 'Победил ИИ';
+    document.getElementById('winner-sub').textContent = 'Попробуйте ещё раз!';
+    addChatMsg('Победа за мной! Но вы сыграли достойно.', 'ai');
+  }
+  updateScoreDisplay();
+  saveState();
+  setTimeout(() => document.getElementById('winner-overlay').classList.add('show'), 800);
+}
+
+function undoMove() {
+  if (!gameHistory.length || isAiThinking) return;
+  const prev = gameHistory.pop();
+  boardState = prev.board;
+  playerTurn = prev.playerTurn || true;
+  mustCapturePiece = null;
+  selectedPiece = null;
+  clearHighlights();
+  validMoves = [];
+  renderPieces();
+  setStatus('Ход отменён. Ваш ход.');
+  saveState();
+}
+
+// =========================================================
+// TUTORIAL
+// =========================================================
+const tutorialSteps = [
+  { text: 'Добро пожаловать! Нажмите на любую золотую шашку в нижней части доски.', highlight: null },
+  { text: 'Отлично! Теперь нажмите на подсвеченную клетку, чтобы переместить шашку.', highlight: null },
+  { text: 'Шашки ходят по диагонали. Если шашка противника стоит перед вами — можно её съесть!', highlight: null },
+  { text: 'Вы готовы играть! Нажмите "Новая игра" чтобы начать.', highlight: null }
+];
+let tutTipEl = null;
+let tutSelectedForStep = null;
+
+function startTutorial() {
+  tutorialMode = true;
+  tutorialStep = 0;
+  newGame();
+  setTimeout(() => {
+    gameActive = false; // pause AI
+    showTutStep();
+  }, 500);
+}
+
+function showTutStep() {
+  removeTutTip();
+  if (tutorialStep >= tutorialSteps.length) { endTutorial(); return; }
+  const step = tutorialSteps[tutorialStep];
+  tutTipEl = document.createElement('div');
+  tutTipEl.className = 'tutorial-tip';
+  tutTipEl.textContent = step.text;
+  document.body.appendChild(tutTipEl);
+
+  if (tutorialStep === 0) {
+    // Highlight all player pieces
+    for (let r = 5; r < 8; r++)
+      for (let c = 0; c < 8; c++)
+        if (boardState[r][c] && boardState[r][c].color === 'light')
+          highlightCell(r, c, 0xFFD700, true);
+    gameActive = true;
+  }
+}
+
+function removeTutTip() {
+  if (tutTipEl) { tutTipEl.remove(); tutTipEl = null; }
+}
+
+function handleTutorialClick(row, col) {
+  if (tutorialStep === 0) {
+    const cell = boardState[row][col];
+    if (cell && cell.color === 'light') {
+      const moves = getMovesForPiece(boardState, row, col);
+      if (moves.length > 0) {
+        tutSelectedForStep = { row, col, moves };
+        selectedPiece = { row, col };
+        validMoves = moves;
+        clearHighlights();
+        highlightSelectedPiece(row, col);
+        moves.forEach(m => highlightCell(m.toRow, m.toCol, 0xFFD700));
+        tutorialStep = 1;
+        showTutStep();
+      }
+    }
+  } else if (tutorialStep === 1) {
+    if (tutSelectedForStep) {
+      const move = tutSelectedForStep.moves.find(m => m.toRow === row && m.toCol === col);
+      if (move) {
+        executePlayerMove(move);
+        clearHighlights();
+        tutorialStep = 2;
+        setTimeout(showTutStep, 600);
+      }
+    }
+  } else if (tutorialStep === 2) {
+    tutorialStep = 3;
+    showTutStep();
+    setTimeout(endTutorial, 3000);
+  }
+}
+
+function endTutorial() {
+  tutorialMode = false;
+  removeTutTip();
+  clearHighlights();
+  selectedPiece = null;
+  validMoves = [];
+  gameActive = true;
+  playerTurn = true;
+  setStatus('Ваш ход! Удачи!');
+  addChatMsg('Обучение завершено! Теперь играем по-настоящему. Удачи!', 'ai');
+}
+
+// =========================================================
+// LOCAL STORAGE
+// =========================================================
+function saveState() {
+  const state = {
+    boardState, scores, difficulty, chatHistory: chatHistory.slice(-30)
+  };
+  try { localStorage.setItem('goldcheckers_v2', JSON.stringify(state)); } catch(e) {}
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem('goldcheckers_v2');
+    if (!raw) return false;
+    const state = JSON.parse(raw);
+    boardState = state.boardState || [];
+    scores = state.scores || { player: 0, ai: 0 };
+    difficulty = state.difficulty || 'easy';
+    chatHistory = state.chatHistory || [];
+    return true;
+  } catch(e) { return false; }
+}
+
+// =========================================================
+// ANIMATE LOOP
+// =========================================================
+let animTime = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+  animTime += dt;
+
+  // Orbit controls
+  controls.update();
+
+  // Piece animation
+  if (animatingPiece) {
+    animatingPiece.t += dt * 2.2;
+    const t = Math.min(animatingPiece.t, 1);
+    const ease = t < 0.5 ? 2*t*t : -1+(4-2*t)*t;
+    const { startPos, endPos, midY, mesh } = animatingPiece;
+    mesh.position.x = startPos.x + (endPos.x - startPos.x) * ease;
+    mesh.position.z = startPos.z + (endPos.z - startPos.z) * ease;
+    const arc = Math.sin(Math.PI * t) * midY;
+    mesh.position.y = startPos.y + (endPos.y - startPos.y) * ease + arc;
+    if (t >= 1) {
+      mesh.position.copy(endPos);
+      const cb = animatingPiece.onDone;
+      animatingPiece = null;
+      if (cb) cb();
+    }
+  }
+
+  // Particle systems
+  for (let i = particleSystems.length - 1; i >= 0; i--) {
+    const ps = particleSystems[i];
+    ps.life -= dt * 1.2;
+    ps.pts.material.opacity = Math.max(0, ps.life);
+    const pos = ps.pts.geometry.attributes.position.array;
+    for (let j = 0; j < ps.velocities.length; j++) {
+      ps.velocities[j].y -= dt * 2.5;
+      pos[j*3] += ps.velocities[j].x * dt;
+      pos[j*3+1] += ps.velocities[j].y * dt;
+      pos[j*3+2] += ps.velocities[j].z * dt;
+    }
+    ps.pts.geometry.attributes.position.needsUpdate = true;
+    if (ps.life <= 0) {
+      scene.remove(ps.pts);
+      particleSystems.splice(i, 1);
+    }
+  }
+
+  // Pulse highlights
+  highlightMeshes.forEach(m => {
+    if (m.userData.pulse) {
+      m.material.opacity = 0.35 + 0.3 * Math.sin(animTime * 4);
+      m.material.emissiveIntensity = 0.6 + 0.6 * Math.sin(animTime * 4);
+    }
+  });
+
+  // Piece gentle float animation
+  Object.values(pieceMeshes).forEach(mesh => {
+    if (!animatingPiece || animatingPiece.mesh !== mesh) {
+      const base = cellPos(mesh.userData.row, mesh.userData.col);
+      mesh.position.y = base.y + Math.sin(animTime * 1.2 + mesh.userData.col * 0.7) * 0.012;
+    }
+  });
+
+  renderer.render(scene, camera);
+}
+
+function onResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+// =========================================================
+// INIT
+// =========================================================
+function showModal(title, body, btnYes, btnNo, onYes, onNo) {
+  const mc = document.getElementById('modal-container');
+  mc.innerHTML = `
+    <div class="modal-overlay">
+      <div class="modal-box">
+        <h2>${title}</h2>
+        <p>${body}</p>
+        <div class="modal-btns">
+          <button class="modal-btn primary" id="modal-yes">${btnYes}</button>
+          ${btnNo ? `<button class="modal-btn secondary" id="modal-no">${btnNo}</button>` : ''}
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('modal-yes').onclick = () => { mc.innerHTML = ''; onYes && onYes(); };
+  if (btnNo) document.getElementById('modal-no').onclick = () => { mc.innerHTML = ''; onNo && onNo(); };
+}
+
+window.addEventListener('load', () => {
+  // Loading bar animation
+  const lbar = document.getElementById('lbar');
+  let prog = 0;
+  const lInt = setInterval(() => {
+    prog += Math.random() * 25;
+    if (prog >= 100) { prog = 100; clearInterval(lInt); }
+    lbar.style.width = prog + '%';
+  }, 120);
+
+  setTimeout(() => {
+    initThree();
+    const hasData = loadState();
+
+    if (hasData && boardState.length === 8) {
+      renderPieces();
+      updateScoreDisplay();
+      setDifficulty(difficulty);
+      chatHistory.forEach(m => addChatMsg(m.text, m.type));
+      setStatus('Добро пожаловать обратно! Ваш ход.');
+      document.getElementById('loading').style.display = 'none';
+    } else {
+      initBoard();
+      renderPieces();
+      updateScoreDisplay();
+      document.getElementById('loading').style.display = 'none';
+      // First launch modal
+      setTimeout(() => {
+        showModal(
+          'ЗОЛОТЫЕ ШАШКИ',
+          'Первый раз здесь? Хотите пройти обучение и узнать правила игры?',
+          'Да, обучи меня', 'Нет, играть', startTutorial, () => {
+            newGame();
+            addChatMsg('Отлично! Вы опытный игрок. Начинаем!', 'ai');
+          }
+        );
+      }, 400);
+    }
+  }, 800);
+});
+</script>
+</body>
+</html>
