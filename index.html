@@ -458,6 +458,10 @@ let tutorialStep = 0;
 let gameActive = true;
 let isAiThinking = false;
 let chatCollapsed = false;
+const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent);
+const ENABLE_FLOATING_ANIMATION = !IS_MOBILE;
+const ENABLE_PARTICLES = !IS_MOBILE;
+const MAX_HISTORY = 200;
 
 // =========================================================
 // THREE.JS SETUP
@@ -475,6 +479,8 @@ let clock = new THREE.Clock();
 const BOARD_SIZE = 8;
 const CELL_SIZE = 1.15;
 const BOARD_OFFSET = (BOARD_SIZE * CELL_SIZE) / 2 - CELL_SIZE / 2;
+const MOVE_HIGHLIGHT_COLOR = 0xC8D8EE;
+const RENDER_PIXEL_RATIO = Math.min(window.devicePixelRatio || 1, IS_MOBILE ? 1.25 : 1.75);
 
 function initThree() {
   scene = new THREE.Scene();
@@ -485,13 +491,13 @@ function initThree() {
   camera.position.set(0, 11, 11);
   camera.lookAt(0, 0, 0);
 
-  renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer = new THREE.WebGLRenderer({ antialias: !IS_MOBILE, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(RENDER_PIXEL_RATIO);
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.enabled = !IS_MOBILE;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.2;
+  renderer.toneMappingExposure = IS_MOBILE ? 1.1 : 1.2;
   document.getElementById('canvas-container').appendChild(renderer.domElement);
 
   controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -509,9 +515,9 @@ function initThree() {
 
   const spot1 = new THREE.SpotLight(0xFFD060, 3.5, 40, Math.PI/5, 0.5, 1.5);
   spot1.position.set(4, 14, 6);
-  spot1.castShadow = true;
-  spot1.shadow.mapSize.width = 2048;
-  spot1.shadow.mapSize.height = 2048;
+  spot1.castShadow = !IS_MOBILE;
+  spot1.shadow.mapSize.width = IS_MOBILE ? 768 : 1536;
+  spot1.shadow.mapSize.height = IS_MOBILE ? 768 : 1536;
   scene.add(spot1);
 
   const spot2 = new THREE.SpotLight(0xFFA020, 2, 30, Math.PI/5, 0.5, 2);
@@ -522,9 +528,11 @@ function initThree() {
   ptLight.position.set(0, 8, 0);
   scene.add(ptLight);
 
-  const ptLight2 = new THREE.PointLight(0xFF8800, 0.5, 18);
-  ptLight2.position.set(5, 3, 5);
-  scene.add(ptLight2);
+  if (!IS_MOBILE) {
+    const ptLight2 = new THREE.PointLight(0xFF8800, 0.5, 18);
+    ptLight2.position.set(5, 3, 5);
+    scene.add(ptLight2);
+  }
 
   buildBoard();
   window.addEventListener('resize', onResize);
@@ -689,12 +697,13 @@ function updatePieceMeshPosition(oldRow, oldCol, newRow, newCol, onDone) {
 
   const startPos = mesh.position.clone();
   const endPos = cellPos(newRow, newCol);
-  const midY = 1.5;
+  const midY = 0.45;
   let t = 0;
   animatingPiece = { mesh, startPos, endPos, midY, t, done: false, onDone };
 }
 
 function spawnParticles(pos, color) {
+  if (!ENABLE_PARTICLES) return;
   const count = 40;
   const geo = new THREE.BufferGeometry();
   const positions = new Float32Array(count * 3);
@@ -728,11 +737,11 @@ function clearHighlights() {
   highlightMeshes = [];
 }
 
-function highlightCell(row, col, hexColor = 0xFFD700, pulse = false) {
+function highlightCell(row, col, hexColor = MOVE_HIGHLIGHT_COLOR, pulse = false) {
   const geo = new THREE.BoxGeometry(CELL_SIZE - 0.06, 0.02, CELL_SIZE - 0.06);
   const mat = new THREE.MeshStandardMaterial({
-    color: hexColor, transparent: true, opacity: 0.55,
-    emissive: hexColor, emissiveIntensity: 0.9,
+    color: hexColor, transparent: true, opacity: 0.66,
+    emissive: hexColor, emissiveIntensity: 1.25,
     depthWrite: false
   });
   const m = new THREE.Mesh(geo, mat);
@@ -921,12 +930,294 @@ function countPieces(board) {
 
 function evaluateBoard(board) {
   const cnt = countPieces(board);
-  return (cnt.light + cnt.lightK * 2.5) - (cnt.dark + cnt.darkK * 2.5);
+  return (cnt.dark + cnt.darkK * 2.5) - (cnt.light + cnt.lightK * 2.5);
 }
 
 // =========================================================
-// AI (Minimax + Mistral)
+// AI (Hybrid engine: basic minimax + advanced hard mode)
 // =========================================================
+const DARK_PIECE_TABLE = [
+  [0, 4, 0, 4, 0, 4, 0, 4],
+  [4, 0, 3, 0, 3, 0, 3, 0],
+  [0, 3, 0, 2, 0, 2, 0, 3],
+  [4, 0, 2, 0, 1, 0, 2, 0],
+  [0, 2, 0, 1, 0, 1, 0, 2],
+  [3, 0, 1, 0, 0, 0, 1, 0],
+  [0, 1, 0, 0, 0, 0, 0, 1],
+  [2, 0, 2, 0, 2, 0, 2, 0]
+];
+const LIGHT_PIECE_TABLE = [
+  [2, 0, 2, 0, 2, 0, 2, 0],
+  [0, 1, 0, 0, 0, 0, 0, 1],
+  [3, 0, 1, 0, 0, 0, 1, 0],
+  [0, 2, 0, 1, 0, 1, 0, 2],
+  [4, 0, 2, 0, 1, 0, 2, 0],
+  [0, 3, 0, 2, 0, 2, 0, 3],
+  [4, 0, 3, 0, 3, 0, 3, 0],
+  [0, 4, 0, 4, 0, 4, 0, 4]
+];
+const OPENING_MOVES = [
+  { fromRow: 2, fromCol: 1, toRow: 3, toCol: 0 },
+  { fromRow: 2, fromCol: 1, toRow: 3, toCol: 2 },
+  { fromRow: 2, fromCol: 3, toRow: 3, toCol: 2 },
+  { fromRow: 2, fromCol: 3, toRow: 3, toCol: 4 },
+  { fromRow: 2, fromCol: 5, toRow: 3, toCol: 4 },
+  { fromRow: 2, fromCol: 5, toRow: 3, toCol: 6 },
+  { fromRow: 2, fromCol: 7, toRow: 3, toCol: 6 }
+];
+const HARD_MAX_DEPTH = 8;
+const HARD_TIME_LIMIT_MS = 3200;
+const QUIESCENCE_MAX_DEPTH = 6;
+const MATE_SCORE = 100000;
+
+let transpositionTable = {};
+let nodesSearched = 0;
+let lastSearchDepth = 0;
+let moveCount = 0;
+
+function boardHashState(board, color, forcedPiece) {
+  let h = color === 'dark' ? 'D' : 'L';
+  h += forcedPiece ? `${forcedPiece.row}${forcedPiece.col}` : '__';
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const p = board[r][c];
+      if (!p) h += '0';
+      else h += p.color === 'dark' ? (p.king ? 'K' : 'd') : (p.king ? 'Q' : 'l');
+    }
+  }
+  return h;
+}
+
+function getLegalMovesState(board, color, forcedPiece = null) {
+  if (forcedPiece) {
+    const piece = board[forcedPiece.row] && board[forcedPiece.row][forcedPiece.col];
+    if (!piece || piece.color !== color) return [];
+    return getCaptureMoves(board, forcedPiece.row, forcedPiece.col, color, piece.king)
+      .map(m => ({ fromRow: forcedPiece.row, fromCol: forcedPiece.col, ...m }));
+  }
+  return getAllMoves(board, color);
+}
+
+function applyMoveState(state, move) {
+  const nextBoard = applyMove(state.board, move);
+  let nextColor = state.color === 'dark' ? 'light' : 'dark';
+  let nextForcedPiece = null;
+
+  if (move.capRow !== undefined) {
+    const moved = nextBoard[move.toRow][move.toCol];
+    const nextCaptures = getCaptureMoves(nextBoard, move.toRow, move.toCol, state.color, moved && moved.king);
+    if (nextCaptures.length > 0) {
+      nextColor = state.color;
+      nextForcedPiece = { row: move.toRow, col: move.toCol };
+    }
+  }
+
+  return { board: nextBoard, color: nextColor, forcedPiece: nextForcedPiece };
+}
+
+function evaluateBoardEnhanced(board) {
+  let score = 0;
+  const cnt = countPieces(board);
+
+  score += (cnt.dark - cnt.light) * 120;
+  score += (cnt.darkK - cnt.lightK) * 290;
+
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const p = board[r][c];
+      if (!p) continue;
+
+      if (p.color === 'dark') {
+        if (p.king) {
+          score += 16;
+        } else {
+          score += DARK_PIECE_TABLE[r][c] * 5;
+          score += r * 2;
+        }
+      } else {
+        if (p.king) {
+          score -= 16;
+        } else {
+          score -= LIGHT_PIECE_TABLE[r][c] * 5;
+          score -= (7 - r) * 2;
+        }
+      }
+
+      if ((r === 3 || r === 4) && (c === 3 || c === 4)) {
+        score += p.color === 'dark' ? 8 : -8;
+      }
+    }
+  }
+
+  const darkMoves = getAllMoves(board, 'dark').length;
+  const lightMoves = getAllMoves(board, 'light').length;
+  const darkCaps = getAllMoves(board, 'dark').filter(m => m.capRow !== undefined).length;
+  const lightCaps = getAllMoves(board, 'light').filter(m => m.capRow !== undefined).length;
+
+  score += (darkMoves - lightMoves) * 5;
+  score += (darkCaps - lightCaps) * 20;
+
+  for (let c = 0; c < 8; c++) {
+    if (board[0][c] && board[0][c].color === 'dark') score += 6;
+    if (board[7][c] && board[7][c].color === 'light') score -= 6;
+  }
+
+  return score;
+}
+
+function orderMovesState(board, moves, color) {
+  return moves.map(mv => {
+    let score = 0;
+    if (mv.capRow !== undefined) {
+      score += 260;
+      const capPiece = board[mv.capRow] && board[mv.capRow][mv.capCol];
+      if (capPiece && capPiece.king) score += 140;
+    }
+
+    const piece = board[mv.fromRow] && board[mv.fromRow][mv.fromCol];
+    if (piece) {
+      if (!piece.king) {
+        if (piece.color === 'dark' && mv.toRow === 7) score += 220;
+        if (piece.color === 'light' && mv.toRow === 0) score += 220;
+      }
+
+      if (piece.color === 'dark' && !piece.king) {
+        score += DARK_PIECE_TABLE[mv.toRow][mv.toCol] - DARK_PIECE_TABLE[mv.fromRow][mv.fromCol];
+      }
+      if (piece.color === 'light' && !piece.king) {
+        score -= LIGHT_PIECE_TABLE[mv.toRow][mv.toCol] - LIGHT_PIECE_TABLE[mv.fromRow][mv.fromCol];
+      }
+    }
+
+    if (color === 'light') score = -score;
+    return { mv, score };
+  })
+    .sort((a, b) => b.score - a.score)
+    .map(x => x.mv);
+}
+
+function terminalScore(state, depth) {
+  return state.color === 'dark' ? -MATE_SCORE + depth : MATE_SCORE - depth;
+}
+
+function quiescenceState(state, alpha, beta, depth = 0) {
+  nodesSearched++;
+  const maximizing = state.color === 'dark';
+  const standPat = evaluateBoardEnhanced(state.board);
+  if (depth >= QUIESCENCE_MAX_DEPTH) return standPat;
+
+  if (maximizing) {
+    if (standPat >= beta) return beta;
+    if (standPat > alpha) alpha = standPat;
+  } else {
+    if (standPat <= alpha) return alpha;
+    if (standPat < beta) beta = standPat;
+  }
+
+  const moves = getLegalMovesState(state.board, state.color, state.forcedPiece)
+    .filter(m => m.capRow !== undefined);
+  if (!moves.length) return standPat;
+
+  const orderedMoves = orderMovesState(state.board, moves, state.color);
+  for (const mv of orderedMoves) {
+    const child = applyMoveState(state, mv);
+    const score = quiescenceState(child, alpha, beta, depth + 1);
+
+    if (maximizing) {
+      if (score > alpha) alpha = score;
+      if (alpha >= beta) return beta;
+    } else {
+      if (score < beta) beta = score;
+      if (beta <= alpha) return alpha;
+    }
+  }
+
+  return maximizing ? alpha : beta;
+}
+
+function minimaxEnhancedState(state, depth, alpha, beta) {
+  nodesSearched++;
+  const alphaOrig = alpha;
+  const betaOrig = beta;
+  const key = `${depth}|${boardHashState(state.board, state.color, state.forcedPiece)}`;
+  const cached = transpositionTable[key];
+
+  if (cached) {
+    if (cached.flag === 'exact') return cached.score;
+    if (cached.flag === 'lower' && cached.score > alpha) alpha = cached.score;
+    if (cached.flag === 'upper' && cached.score < beta) beta = cached.score;
+    if (alpha >= beta) return cached.score;
+  }
+
+  const moves = getLegalMovesState(state.board, state.color, state.forcedPiece);
+  if (!moves.length) return terminalScore(state, depth);
+  if (depth === 0) return quiescenceState(state, alpha, beta, 0);
+
+  const maximizing = state.color === 'dark';
+  let bestScore = maximizing ? -Infinity : Infinity;
+  const orderedMoves = orderMovesState(state.board, moves, state.color);
+
+  for (const mv of orderedMoves) {
+    const child = applyMoveState(state, mv);
+    const score = minimaxEnhancedState(child, depth - 1, alpha, beta);
+
+    if (maximizing) {
+      if (score > bestScore) bestScore = score;
+      if (score > alpha) alpha = score;
+    } else {
+      if (score < bestScore) bestScore = score;
+      if (score < beta) beta = score;
+    }
+
+    if (alpha >= beta) break;
+  }
+
+  let flag = 'exact';
+  if (bestScore <= alphaOrig) flag = 'upper';
+  else if (bestScore >= betaOrig) flag = 'lower';
+  transpositionTable[key] = { score: bestScore, flag };
+
+  return bestScore;
+}
+
+function getBestMoveIterativeDeepening(board, maxDepth = HARD_MAX_DEPTH, timeLimitMs = HARD_TIME_LIMIT_MS) {
+  const root = { board, color: 'dark', forcedPiece: null };
+  const moves = getLegalMovesState(root.board, root.color, root.forcedPiece);
+  if (!moves.length) return null;
+
+  transpositionTable = {};
+  nodesSearched = 0;
+  const startedAt = Date.now();
+  let bestMove = moves[0];
+  let bestDepthReached = 1;
+
+  for (let depth = 1; depth <= maxDepth; depth++) {
+    if (Date.now() - startedAt > timeLimitMs) break;
+
+    let localBest = null;
+    let localBestScore = -Infinity;
+    const orderedMoves = orderMovesState(root.board, moves, 'dark');
+
+    for (const mv of orderedMoves) {
+      if (Date.now() - startedAt > timeLimitMs) break;
+      const child = applyMoveState(root, mv);
+      const score = minimaxEnhancedState(child, depth - 1, -Infinity, Infinity);
+      if (score > localBestScore) {
+        localBestScore = score;
+        localBest = mv;
+      }
+    }
+
+    if (localBest) {
+      bestMove = localBest;
+      bestDepthReached = depth;
+    }
+  }
+
+  lastSearchDepth = bestDepthReached;
+  return bestMove;
+}
+
 function minimax(board, depth, alpha, beta, maximizing) {
   const color = maximizing ? 'dark' : 'light';
   const moves = getAllMoves(board, color);
@@ -935,50 +1226,97 @@ function minimax(board, depth, alpha, beta, maximizing) {
   if (maximizing) {
     let maxEval = -Infinity;
     for (const mv of moves) {
-      const nb = applyMove(board, mv);
-      const ev = minimax(nb, depth - 1, alpha, beta, false);
+      const ev = minimax(applyMove(board, mv), depth - 1, alpha, beta, false);
       maxEval = Math.max(maxEval, ev);
       alpha = Math.max(alpha, ev);
       if (beta <= alpha) break;
     }
     return maxEval;
-  } else {
-    let minEval = Infinity;
-    for (const mv of moves) {
-      const nb = applyMove(board, mv);
-      const ev = minimax(nb, depth - 1, alpha, beta, true);
-      minEval = Math.min(minEval, ev);
-      beta = Math.min(beta, ev);
-      if (beta <= alpha) break;
-    }
-    return minEval;
   }
+
+  let minEval = Infinity;
+  for (const mv of moves) {
+    const ev = minimax(applyMove(board, mv), depth - 1, alpha, beta, true);
+    minEval = Math.min(minEval, ev);
+    beta = Math.min(beta, ev);
+    if (beta <= alpha) break;
+  }
+  return minEval;
 }
 
-function getBestMove(board, depth = 3) {
+function getBestMoveBasic(board, depth = 3) {
   const moves = getAllMoves(board, 'dark');
   if (!moves.length) return null;
-  let best = null, bestScore = -Infinity;
+
+  let best = null;
+  let bestScore = -Infinity;
   for (const mv of moves) {
-    const nb = applyMove(board, mv);
-    const score = minimax(nb, depth - 1, -Infinity, Infinity, false);
-    if (score > bestScore) { bestScore = score; best = mv; }
+    const score = minimax(applyMove(board, mv), depth - 1, -Infinity, Infinity, false);
+    if (score > bestScore) {
+      bestScore = score;
+      best = mv;
+    }
   }
   return best;
+}
+
+function getOpeningMove(board) {
+  const legal = getAllMoves(board, 'dark');
+  for (const op of OPENING_MOVES) {
+    const found = legal.find(mv =>
+      mv.fromRow === op.fromRow && mv.fromCol === op.fromCol &&
+      mv.toRow === op.toRow && mv.toCol === op.toCol
+    );
+    if (found) return found;
+  }
+  return null;
 }
 
 function getEasyMove(board) {
   const moves = getAllMoves(board, 'dark');
   if (!moves.length) return null;
-  // With some probability make a bad move
   if (Math.random() < 0.45) return moves[Math.floor(Math.random() * moves.length)];
-  return getBestMove(board, 2);
+  return getBestMoveBasic(board, 2);
 }
 
 function getAIMove() {
   if (difficulty === 'easy') return getEasyMove(boardState);
-  if (difficulty === 'standard') return getBestMove(boardState, 3);
-  return getBestMove(boardState, 5);
+  if (difficulty === 'standard') return getBestMoveBasic(boardState, 4);
+
+  if (moveCount < 8) {
+    const opening = getOpeningMove(boardState);
+    if (opening) {
+      lastSearchDepth = 0;
+      return opening;
+    }
+  }
+
+  return getBestMoveIterativeDeepening(boardState, HARD_MAX_DEPTH, HARD_TIME_LIMIT_MS);
+}
+
+function chooseBestFollowUpCapture(board, row, col, color) {
+  const piece = board[row] && board[row][col];
+  if (!piece || piece.color !== color) return null;
+
+  const caps = getCaptureMoves(board, row, col, color, piece.king);
+  if (!caps.length) return null;
+
+  let best = null;
+  let bestScore = color === 'dark' ? -Infinity : Infinity;
+
+  for (const cap of caps) {
+    const candidate = { fromRow: row, fromCol: col, ...cap };
+    const nextBoard = applyMove(board, candidate);
+    const score = difficulty === 'hard' ? evaluateBoardEnhanced(nextBoard) : evaluateBoard(nextBoard);
+
+    if (color === 'dark') {
+      if (score > bestScore) { bestScore = score; best = candidate; }
+    } else {
+      if (score < bestScore) { bestScore = score; best = candidate; }
+    }
+  }
+
+  return best;
 }
 
 // =========================================================
@@ -1036,7 +1374,7 @@ async function getAIComment(move, cnt) {
 
 async function getAnalysis() {
   const cnt = countPieces(boardState);
-  const score = evaluateBoard(boardState);
+  const score = -evaluateBoard(boardState);
   const sys = 'Ты аналитик шашечной позиции. Отвечай по-русски одним кратким предложением. Не используй Markdown.';
   const msg = `У игрока (светлые) ${cnt.light} шашек (${cnt.lightK} дамок), у ИИ (тёмные) ${cnt.dark} (${cnt.darkK} дамок). Числовая оценка: ${score.toFixed(1)} (положительная — выгода игрока). Кто имеет преимущество?`;
   const res = await callMistral(sys, msg);
@@ -1078,6 +1416,37 @@ function toggleChat() {
 // =========================================================
 // GAME FLOW
 // =========================================================
+function pushHistorySnapshot() {
+  const snapshot = {
+    board: cloneBoard(boardState),
+    playerTurn,
+    mustCapturePiece: mustCapturePiece ? { ...mustCapturePiece } : null,
+    moveCount,
+    gameActive,
+    scores: { ...scores }
+  };
+  gameHistory.push(snapshot);
+  if (gameHistory.length > MAX_HISTORY) gameHistory.shift();
+}
+
+function restoreSnapshot(snapshot) {
+  boardState = cloneBoard(snapshot.board);
+  playerTurn = !!snapshot.playerTurn;
+  mustCapturePiece = snapshot.mustCapturePiece ? { ...snapshot.mustCapturePiece } : null;
+  moveCount = snapshot.moveCount || 0;
+  gameActive = snapshot.gameActive !== false;
+  scores = snapshot.scores ? { ...snapshot.scores } : scores;
+  selectedPiece = null;
+  validMoves = [];
+  isAiThinking = false;
+  animatingPiece = null;
+  document.getElementById('winner-overlay').classList.remove('show');
+  clearHighlights();
+  renderPieces();
+  updateScoreDisplay();
+  updateAnalysis();
+  saveState();
+}
 function newGame() {
   document.getElementById('winner-overlay').classList.remove('show');
   gameActive = true;
@@ -1086,6 +1455,9 @@ function newGame() {
   mustCapturePiece = null;
   gameHistory = [];
   isAiThinking = false;
+  animatingPiece = null;
+  moveCount = 0;
+  transpositionTable = {};
   clearHighlights();
   initBoard();
   renderPieces();
@@ -1111,7 +1483,7 @@ function updateScoreDisplay() {
 
 async function updateAnalysis() {
   const cnt = countPieces(boardState);
-  const score = evaluateBoard(boardState);
+  const score = -evaluateBoard(boardState);
   const text = simpleAnalysis(cnt, score);
   document.getElementById('analysis-text').textContent = text;
   // Async AI analysis (don't block)
@@ -1195,18 +1567,19 @@ function handleBoardClick(row, col) {
     validMoves = moves;
     clearHighlights();
     highlightSelectedPiece(row, col);
-    moves.forEach(m => highlightCell(m.toRow, m.toCol, m.capRow !== undefined ? 0xFF4400 : 0xFFD700));
+    moves.forEach(m => highlightCell(m.toRow, m.toCol, MOVE_HIGHLIGHT_COLOR));
     setStatus('Выберите клетку для хода');
   }
 }
 
 function executePlayerMove(move) {
   // Save history
-  gameHistory.push({ board: cloneBoard(boardState), playerTurn: true, mustCapturePiece });
+  pushHistorySnapshot();
   clearHighlights();
 
   const wasCapture = move.capRow !== undefined;
   boardState = applyMove(boardState, move);
+  moveCount++;
 
   // Animate piece
   if (wasCapture) {
@@ -1221,7 +1594,7 @@ function executePlayerMove(move) {
         validMoves = nextCaps.map(c => ({ ...c, fromRow: move.toRow, fromCol: move.toCol }));
         clearHighlights();
         highlightSelectedPiece(move.toRow, move.toCol);
-        validMoves.forEach(m => highlightCell(m.toRow, m.toCol, 0xFF4400));
+        validMoves.forEach(m => highlightCell(m.toRow, m.toCol, MOVE_HIGHLIGHT_COLOR));
         setStatus('Продолжайте серию взятий!');
       } else {
         finishPlayerTurn();
@@ -1274,10 +1647,11 @@ async function aiTurn() {
   }
 
   // Save history
-  gameHistory.push({ board: cloneBoard(boardState), playerTurn: false, mustCapturePiece: null });
+  pushHistorySnapshot();
 
   const wasCapture = move.capRow !== undefined;
   boardState = applyMove(boardState, move);
+  moveCount++;
   const cnt = countPieces(boardState);
 
   updatePieceMeshPosition(move.fromRow, move.fromCol, move.toRow, move.toCol, async () => {
@@ -1288,8 +1662,9 @@ async function aiTurn() {
     if (wasCapture) {
       const nextCaps = getCaptureMoves(boardState, move.toRow, move.toCol, 'dark', boardState[move.toRow][move.toCol].king);
       if (nextCaps.length > 0) {
-        const nextMove = { fromRow: move.toRow, fromCol: move.toCol, ...nextCaps[0] };
+        const nextMove = chooseBestFollowUpCapture(boardState, move.toRow, move.toCol, 'dark') || { fromRow: move.toRow, fromCol: move.toCol, ...nextCaps[0] };
         boardState = applyMove(boardState, nextMove);
+        moveCount++;
         setTimeout(() => {
           updatePieceMeshPosition(nextMove.fromRow, nextMove.fromCol, nextMove.toRow, nextMove.toCol, () => {
             removePieceMesh(nextMove.capRow, nextMove.capCol);
@@ -1348,17 +1723,10 @@ function showWinner(winner) {
 }
 
 function undoMove() {
-  if (!gameHistory.length || isAiThinking) return;
-  const prev = gameHistory.pop();
-  boardState = prev.board;
-  playerTurn = prev.playerTurn || true;
-  mustCapturePiece = null;
-  selectedPiece = null;
-  clearHighlights();
-  validMoves = [];
-  renderPieces();
-  setStatus('Ход отменён. Ваш ход.');
-  saveState();
+  if (isAiThinking || animatingPiece || !gameHistory.length) return;
+  const snapshot = gameHistory.pop();
+  restoreSnapshot(snapshot);
+  setStatus('��� �������. ����� ����������.');
 }
 
 // =========================================================
@@ -1417,7 +1785,7 @@ function handleTutorialClick(row, col) {
         validMoves = moves;
         clearHighlights();
         highlightSelectedPiece(row, col);
-        moves.forEach(m => highlightCell(m.toRow, m.toCol, 0xFFD700));
+        moves.forEach(m => highlightCell(m.toRow, m.toCol, MOVE_HIGHLIGHT_COLOR));
         tutorialStep = 1;
         showTutStep();
       }
@@ -1456,7 +1824,7 @@ function endTutorial() {
 // =========================================================
 function saveState() {
   const state = {
-    boardState, scores, difficulty, chatHistory: chatHistory.slice(-30)
+    boardState, scores, difficulty, moveCount, chatHistory: chatHistory.slice(-30)
   };
   try { localStorage.setItem('goldcheckers_v2', JSON.stringify(state)); } catch(e) {}
 }
@@ -1470,6 +1838,7 @@ function loadState() {
     scores = state.scores || { player: 0, ai: 0 };
     difficulty = state.difficulty || 'easy';
     chatHistory = state.chatHistory || [];
+    moveCount = state.moveCount || 0;
     return true;
   } catch(e) { return false; }
 }
@@ -1480,7 +1849,7 @@ function loadState() {
 let animTime = 0;
 function animate() {
   requestAnimationFrame(animate);
-  const dt = clock.getDelta();
+  const dt = Math.min(clock.getDelta(), 0.033);
   animTime += dt;
 
   // Orbit controls
@@ -1526,18 +1895,21 @@ function animate() {
   // Pulse highlights
   highlightMeshes.forEach(m => {
     if (m.userData.pulse) {
-      m.material.opacity = 0.35 + 0.3 * Math.sin(animTime * 4);
-      m.material.emissiveIntensity = 0.6 + 0.6 * Math.sin(animTime * 4);
+      m.material.opacity = 0.46 + 0.28 * Math.sin(animTime * 4);
+      m.material.emissiveIntensity = 0.95 + 0.75 * Math.sin(animTime * 4);
     }
   });
 
   // Piece gentle float animation
-  Object.values(pieceMeshes).forEach(mesh => {
-    if (!animatingPiece || animatingPiece.mesh !== mesh) {
-      const base = cellPos(mesh.userData.row, mesh.userData.col);
-      mesh.position.y = base.y + Math.sin(animTime * 1.2 + mesh.userData.col * 0.7) * 0.012;
-    }
-  });
+  if (ENABLE_FLOATING_ANIMATION) {
+    Object.values(pieceMeshes).forEach(mesh => {
+      if (!animatingPiece || animatingPiece.mesh !== mesh) {
+        const baseY = 0.28;
+        const wobble = Math.sin(animTime * 1.2 + mesh.userData.col * 0.7) * 0.012;
+        mesh.position.y = baseY + wobble;
+      }
+    });
+  }
 
   renderer.render(scene, camera);
 }
@@ -1545,6 +1917,7 @@ function animate() {
 function onResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, IS_MOBILE ? 1.25 : 1.75));
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
@@ -1611,3 +1984,14 @@ window.addEventListener('load', () => {
 </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
